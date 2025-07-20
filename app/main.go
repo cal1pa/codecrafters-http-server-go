@@ -49,12 +49,18 @@ func main() {
 
 	msgArr := strings.Fields(msg)
 
-	if msgArr[1] != "/" {
+	path := strings.TrimSpace(msgArr[1])
+	if strings.HasPrefix(path, "/echo/") {
+		body := strings.TrimPrefix(path, "/echo/")
+		header := fmt.Sprintf("Content-Type: text/plain%sContent-Length: %d%s", CRLF, len(body), CRLF)
+		res = makeResponse(STATUS_LINE_OK, header, body)
+	} else if path != "/" {
 		res = makeResponse(STATUS_LINE_NOT_FOUND, "", "")
 	} else {
 		res = makeResponse(STATUS_LINE_OK, "", "")
 	}
 
+	fmt.Println(path)
 	_, err = conn.Write([]byte(res))
 	if err != nil {
 		fmt.Println("Failed to write response: ", err.Error())
@@ -63,6 +69,6 @@ func main() {
 	conn.Close()
 }
 
-func makeResponse(statusline, body, header string) string {
-	return fmt.Sprintf("%s%s%s%s%s%s", statusline, CRLF, header, CRLF, body, CRLF)
+func makeResponse(statusline, header, body string) string {
+	return fmt.Sprintf("%s%s%s%s%s\n", statusline, CRLF, header, CRLF, body)
 }
