@@ -57,15 +57,9 @@ func AcceptReqest(server *Server) (string, net.Conn) {
 	return string(buff), conn
 }
 
-func main() {
-	// You can use print statements as follows for debugging, they'll be visible when running tests.
-	fmt.Println("Logs from your program will appear here!")
+func AcceptandProcessRequest(server *Server) {
 
-	// Uncomment this block to pass the first stage
-	s := CreateServer()
-	defer s.Close()
-
-	rawMessage, conn := AcceptReqest(s)
+	rawMessage, conn := AcceptReqest(server)
 
 	req, err := ParseRequestMessage(rawMessage)
 
@@ -107,10 +101,24 @@ func main() {
 		fmt.Println("Failed to write response: ", err.Error())
 		os.Exit(1)
 	}
-	conn.Close()
 
 	fmt.Println(res)
 
+	conn.Close()
+
+}
+
+func main() {
+	// You can use print statements as follows for debugging, they'll be visible when running tests.
+	fmt.Println("Logs from your program will appear here!")
+
+	// Uncomment this block to pass the first stage
+	s := CreateServer()
+	defer s.Close()
+
+	for {
+		go AcceptandProcessRequest(s)
+	}
 }
 
 func makeResponse(statusline, header, body string) string {
