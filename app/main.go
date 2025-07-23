@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -12,8 +14,33 @@ const (
 	STATUS_LINE_OK        = "HTTP/1.1 200 OK"
 	STATUS_LINE_NOT_FOUND = "HTTP/1.1 404 Not Found"
 	CRLF                  = "\r\n"
-	TEST_REQUEST          = "GET " + "/testPath " + "HTTP/1.1" + CRLF + "Host: localhost:4221" + CRLF + "User-Agent: foobar/1.2.3" + CRLF + CRLF
 )
+
+func main() {
+	// You can use print statements as follows for debugging, they'll be visible when running tests.
+	fmt.Println("Logs from your program will appear here!")
+
+	// Uncomment this block to pass the first stage
+	var dirPath string
+	dirCmd := flag.NewFlagSet("directory", flag.ExitOnError)
+	if len(os.Args) > 2 {
+		dirCmd.Parse(os.Args[2:])
+		dirPath = dirCmd.Arg(0)
+
+	}
+	s := CreateServer()
+	defer s.Close()
+
+	for {
+		conn, err := s.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection: ", err.Error())
+			continue
+		}
+		go handleConnection(conn, dirPath)
+
+	}
+}
 
 type Server struct {
 	net.Listener
@@ -30,8 +57,7 @@ type Request struct {
 func CreateServer() *Server {
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
-		fmt.Println("Failed to build port 4221")
-		os.Exit(1)
+		log.Fatal("Critical: Failed to build port 4221")
 	}
 	s := Server{
 		l,
@@ -39,36 +65,26 @@ func CreateServer() *Server {
 	return &s
 }
 
-func AcceptReqest(server *Server) (string, net.Conn) {
-	conn, err := server.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
-	}
+func handleConnection(conn net.Conn, dirPath string) {
+	defer conn.Close()
+	var res string
 	buff := make([]byte, 1024)
 	n, err := conn.Read(buff)
 	if err != nil {
-		fmt.Println("Error reading: ", err.Error())
-		os.Exit(1)
+		log.Println("ERROR: ", err.Error())
+		return
 	}
-	fmt.Printf("Read %d bytes\n", n)
-	fmt.Println("The message was: ", string(buff))
+	log.Printf("INFO: Read %d bytes\n", n)
 
-	return string(buff), conn
-}
+	message := string(buff[:n])
 
-func AcceptandProcessRequest(server *Server) {
+	log.Println("INFO: The message was: ", message)
 
-	rawMessage, conn := AcceptReqest(server)
-
-	req, err := ParseRequestMessage(rawMessage)
+	req, err := ParseRequestMessage(message)
 
 	if err != nil {
-		fmt.Println("Could not parse request message:", err.Error())
+		log.Println("ERROR: Could not parse request message:", err.Error())
 	}
-
-	var res string
-
 	switch {
 	case req.path == "/user-agent":
 		{
@@ -88,6 +104,28 @@ func AcceptandProcessRequest(server *Server) {
 			header := fmt.Sprintf("Content-Type: text/plain%sContent-Length: %d%s", CRLF, len(body), CRLF)
 			res = makeResponse(STATUS_LINE_OK, header, body)
 		}
+	case strings.HasPrefix(req.path, "/files/"):
+		{
+			filename := strings.TrimPrefix(req.path, "/files/")
+			reqFilePath := fmt.Sprintf("%s%s", dirPath, filename)
+			info, err := os.Stat(reqFilePath)
+			if err != nil {
+				log.Println("ERROR: Cant get file info", err.Error())
+				res = makeResponse(STATUS_LINE_NOT_FOUND, "", "")
+				break
+
+			}
+			data, err := os.ReadFile(reqFilePath)
+			if err != nil {
+				log.Println("ERROR: Failed to read file: ", err.Error())
+				res = makeResponse(STATUS_LINE_NOT_FOUND, "", "")
+				break
+			}
+
+			stringData := string(data)
+			header := fmt.Sprintf("Content-Type: application/octet-stream%sContent-Length: %d%s", CRLF, info.Size(), CRLF)
+			res = makeResponse(STATUS_LINE_OK, header, stringData)
+		}
 	case req.path == "/":
 		{
 			res = makeResponse(STATUS_LINE_OK, "", "")
@@ -98,31 +136,9 @@ func AcceptandProcessRequest(server *Server) {
 
 	_, err = conn.Write([]byte(res))
 	if err != nil {
-		fmt.Println("Failed to write response: ", err.Error())
-		os.Exit(1)
+		log.Println("ERROR: Failed to write response: ", err.Error())
 	}
-
 	fmt.Println(res)
-
-	conn.Close()
-
-}
-
-func main() {
-	// You can use print statements as follows for debugging, they'll be visible when running tests.
-	fmt.Println("Logs from your program will appear here!")
-
-	// Uncomment this block to pass the first stage
-	s := CreateServer()
-	defer s.Close()
-
-	for {
-		go AcceptandProcessRequest(s)
-	}
-}
-
-func makeResponse(statusline, header, body string) string {
-	return fmt.Sprintf("%s%s%s%s%s\n", statusline, CRLF, header, CRLF, body)
 }
 
 func ParseRequestMessage(rawMessage string) (Request, error) {
@@ -147,14 +163,6 @@ func ParseRequestMessage(rawMessage string) (Request, error) {
 	}, nil
 }
 
-func TestingParse() {
-	req, _ := ParseRequestMessage(TEST_REQUEST)
-
-	fmt.Println("Method: " + req.method)
-	fmt.Println("Path: " + req.path)
-	fmt.Println("Protocol : " + req.protocol)
-	fmt.Print("Header: ")
-	fmt.Println(req.header)
-	fmt.Println("Body: " + req.body)
-
+func makeResponse(statusline, header, body string) string {
+	return fmt.Sprintf("%s%s%s%s%s\n", statusline, CRLF, header, CRLF, body)
 }
