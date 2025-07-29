@@ -10,11 +10,18 @@ import (
 )
 
 const (
-	STATUS_LINE_OK        = "HTTP/1.1 200 OK"
-	STATUS_LINE_NOT_FOUND = "HTTP/1.1 404 Not Found"
-	STATUS_LINE_CREATED   = "HTTP/1.1 201 Created"
-	CRLF                  = "\r\n"
+	STATUS_LINE_OK          = "HTTP/1.1 200 OK"
+	STATUS_LINE_NOT_FOUND   = "HTTP/1.1 404 Not Found"
+	STATUS_LINE_CREATED     = "HTTP/1.1 201 Created"
+	CRLF                    = "\r\n"
+	CONTENT_TYPE_PLAIN_TEXT = "text/plain"
 )
+
+type Header struct {
+	contentType     string
+	contentLength   string
+	contentEncoding string
+}
 
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -64,12 +71,22 @@ func handleConnection(conn net.Conn, dirPath string) {
 	if err != nil {
 		log.Println("ERROR: Could not parse request message:", err.Error())
 	}
+	acceptedEncoding, ok := req.header["Accept-Encoding"]
+	if !ok || acceptedEncoding != "gzip" {
+		acceptedEncoding = ""
+	}
+
 	switch {
 	case req.path == "/user-agent":
 		{
 			val, ok := req.header["User-Agent"]
 			if ok {
-				header := fmt.Sprintf("Content-Type: text/plain%sContent-Length: %d%s", CRLF, len(val), CRLF)
+				//	header := fmt.Sprintf("Content-Type: text/plain%sContent-Length: %d%s", CRLF, len(val), CRLF)
+				header := createResHeader(Header{
+					contentType:     CONTENT_TYPE_PLAIN_TEXT,
+					contentLength:   fmt.Sprintf("%d", len(val)),
+					contentEncoding: acceptedEncoding,
+				})
 				res = makeResponse(STATUS_LINE_OK, header, val)
 				break
 			} else {
@@ -79,7 +96,12 @@ func handleConnection(conn net.Conn, dirPath string) {
 	case strings.HasPrefix(req.path, "/echo/"):
 		{
 			body := strings.TrimPrefix(req.path, "/echo/")
-			header := fmt.Sprintf("Content-Type: text/plain%sContent-Length: %d%s", CRLF, len(body), CRLF)
+			// header := fmt.Sprintf("Content-Type: text/plain%sContent-Length: %d%s", CRLF, len(body), CRLF)
+			header := createResHeader(Header{
+				contentType:     CONTENT_TYPE_PLAIN_TEXT,
+				contentLength:   fmt.Sprintf("%d", len(body)),
+				contentEncoding: acceptedEncoding,
+			})
 			res = makeResponse(STATUS_LINE_OK, header, body)
 		}
 	case strings.HasPrefix(req.path, "/files/"):
@@ -106,4 +128,20 @@ func handleConnection(conn net.Conn, dirPath string) {
 
 func makeResponse(statusline, header, body string) string {
 	return fmt.Sprintf("%s%s%s%s%s\n", statusline, CRLF, header, CRLF, body)
+}
+
+func createResHeader(header Header) string {
+	val := ""
+	if header.contentType != "" {
+		val += fmt.Sprintf("Content-Type:%s%s", header.contentType, CRLF)
+	}
+
+	if header.contentLength != "" {
+		val += fmt.Sprintf("Content-Length:%s%s", header.contentLength, CRLF)
+	}
+
+	if header.contentEncoding != "" {
+		val += fmt.Sprintf("Content-Encoding:%s%s", header.contentEncoding, CRLF)
+	}
+	return val
 }
