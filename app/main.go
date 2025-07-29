@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -71,9 +72,11 @@ func handleConnection(conn net.Conn, dirPath string) {
 	if err != nil {
 		log.Println("ERROR: Could not parse request message:", err.Error())
 	}
-	acceptedEncoding, ok := req.header["Accept-Encoding"]
-	if !ok || acceptedEncoding != "gzip" {
-		acceptedEncoding = ""
+	resEncoding, ok := req.header["Accept-Encoding"]
+	accptedEncodings := strings.Split(resEncoding, ", ")
+	acceptedEncoding := ""
+	if ok && slices.Contains(accptedEncodings, "gzip") {
+		acceptedEncoding = "gzip"
 	}
 
 	switch {
@@ -96,7 +99,6 @@ func handleConnection(conn net.Conn, dirPath string) {
 	case strings.HasPrefix(req.path, "/echo/"):
 		{
 			body := strings.TrimPrefix(req.path, "/echo/")
-			// header := fmt.Sprintf("Content-Type: text/plain%sContent-Length: %d%s", CRLF, len(body), CRLF)
 			header := createResHeader(Header{
 				contentType:     CONTENT_TYPE_PLAIN_TEXT,
 				contentLength:   fmt.Sprintf("%d", len(body)),
