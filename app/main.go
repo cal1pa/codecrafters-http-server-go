@@ -107,7 +107,7 @@ func handleConnection(conn net.Conn, dirPath string) {
 			}
 		case req.path == "/":
 			{
-				res = makeResponse(STATUS_LINE_OK, "", nil)
+				res = makeResponse(STATUS_LINE_OK, createResHeader(resHeader), nil)
 			}
 		default:
 			res = makeResponse(STATUS_LINE_NOT_FOUND, "", nil)
