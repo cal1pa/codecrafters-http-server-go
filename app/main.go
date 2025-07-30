@@ -53,54 +53,59 @@ func main() {
 }
 
 func handleConnection(conn net.Conn, dirPath string) {
-	defer conn.Close()
-	var res []byte
-	buff := make([]byte, 1024)
-	n, err := conn.Read(buff)
-	if err != nil {
-		log.Println("ERROR: ", err.Error())
-		return
-	}
-	message := buff[:n]
 
-	log.Printf("INFO: Read %d bytes\n", n)
+	// defer conn.Close()
 
-	req, err := ParseRequestMessage(message)
-	if err != nil {
-		log.Println("ERROR: Could not parse request message:", err.Error())
-	}
-	resEncoding, ok := req.header["Accept-Encoding"]
-	accptedEncodings := strings.Split(resEncoding, ", ")
-	encoding := ""
-	if ok && slices.Contains(accptedEncodings, "gzip") {
-		encoding = "gzip"
+	for {
+		var res []byte
+		buff := make([]byte, 1024)
+		n, err := conn.Read(buff)
+		if err != nil {
+			log.Println("ERROR: ", err.Error())
+			return
+		}
+		message := buff[:n]
+
+		log.Printf("INFO: Read %d bytes\n", n)
+
+		req, err := ParseRequestMessage(message)
+		if err != nil {
+			log.Println("ERROR: Could not parse request message:", err.Error())
+		}
+		resEncoding, ok := req.header["Accept-Encoding"]
+		accptedEncodings := strings.Split(resEncoding, ", ")
+		encoding := ""
+		if ok && slices.Contains(accptedEncodings, "gzip") {
+			encoding = "gzip"
+		}
+
+		switch {
+		case req.path == "/user-agent":
+			{
+				res = HandleUserAgentRequest(req, encoding)
+			}
+		case strings.HasPrefix(req.path, "/echo/"):
+			{
+				res = HandleEchoRequest(req, encoding)
+			}
+		case strings.HasPrefix(req.path, "/files/"):
+			{
+				res = HandleFileRequest(req, dirPath)
+			}
+		case req.path == "/":
+			{
+				res = makeResponse(STATUS_LINE_OK, "", nil)
+			}
+		default:
+			res = makeResponse(STATUS_LINE_NOT_FOUND, "", nil)
+		}
+
+		_, err = conn.Write([]byte(res))
+		if err != nil {
+			log.Println("ERROR: Failed to write response: ", err.Error())
+		}
 	}
 
-	switch {
-	case req.path == "/user-agent":
-		{
-			res = HandleUserAgentRequest(req, encoding)
-		}
-	case strings.HasPrefix(req.path, "/echo/"):
-		{
-			res = HandleEchoRequest(req, encoding)
-		}
-	case strings.HasPrefix(req.path, "/files/"):
-		{
-			res = HandleFileRequest(req, dirPath)
-		}
-	case req.path == "/":
-		{
-			res = makeResponse(STATUS_LINE_OK, "", nil)
-		}
-	default:
-		res = makeResponse(STATUS_LINE_NOT_FOUND, "", nil)
-	}
-
-	_, err = conn.Write([]byte(res))
-	if err != nil {
-		log.Println("ERROR: Failed to write response: ", err.Error())
-	}
 }
 
 func makeResponse(statusline, header string, body []byte) []byte {
