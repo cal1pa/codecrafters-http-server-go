@@ -63,27 +63,59 @@ func handleConnection(conn net.Conn, dirPath string) {
 	}
 	message := buff[:n]
 
+	var body []byte
+
 	log.Printf("INFO: Read %d bytes\n", n)
 
 	req, err := ParseRequestMessage(message)
+
+	log.Println("INFO: The path was: ", req.path)
+	log.Println("INFO: The method was: ", req.method)
+
 	if err != nil {
 		log.Println("ERROR: Could not parse request message:", err.Error())
 	}
 	resEncoding, ok := req.header["Accept-Encoding"]
 	accptedEncodings := strings.Split(resEncoding, ", ")
-	encoding := ""
+	acceptedEncoding := ""
 	if ok && slices.Contains(accptedEncodings, "gzip") {
-		encoding = "gzip"
+		acceptedEncoding = "gzip"
 	}
 
 	switch {
 	case req.path == "/user-agent":
 		{
-			res = HandleUserAgentRequest(req, encoding)
+			val, ok := req.header["User-Agent"]
+			if ok {
+				//	header := fmt.Sprintf("Content-Type: text/plain%sContent-Length: %d%s", CRLF, len(val), CRLF)
+				header := createResHeader(Header{
+					contentType:     CONTENT_TYPE_PLAIN_TEXT,
+					contentLength:   fmt.Sprintf("%d", len(val)),
+					contentEncoding: acceptedEncoding,
+				})
+				res = makeResponse(STATUS_LINE_OK, header, []byte(val))
+				break
+			} else {
+				res = makeResponse(STATUS_LINE_NOT_FOUND, "", nil)
+			}
 		}
 	case strings.HasPrefix(req.path, "/echo/"):
 		{
-			res = HandleEchoRequest(req, encoding)
+			bodyStr := strings.TrimPrefix(req.path, "/echo/")
+
+			if acceptedEncoding != "" {
+				body = compressBytesTogzip([]byte(bodyStr))
+
+			} else {
+
+				body = []byte(bodyStr)
+			}
+			header := createResHeader(Header{
+				contentType:     CONTENT_TYPE_PLAIN_TEXT,
+				contentLength:   fmt.Sprintf("%d", len(body)),
+				contentEncoding: acceptedEncoding,
+			})
+			res = makeResponse(STATUS_LINE_OK, header, []byte(body))
 		}
 	case strings.HasPrefix(req.path, "/files/"):
 		{
