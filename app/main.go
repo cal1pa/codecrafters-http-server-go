@@ -13,17 +13,19 @@ import (
 )
 
 const (
-	STATUS_LINE_OK          = "HTTP/1.1 200 OK"
-	STATUS_LINE_NOT_FOUND   = "HTTP/1.1 404 Not Found"
-	STATUS_LINE_CREATED     = "HTTP/1.1 201 Created"
-	CRLF                    = "\r\n"
-	CONTENT_TYPE_PLAIN_TEXT = "text/plain"
+	STATUS_LINE_OK            = "HTTP/1.1 200 OK"
+	STATUS_LINE_NOT_FOUND     = "HTTP/1.1 404 Not Found"
+	STATUS_LINE_CREATED       = "HTTP/1.1 201 Created"
+	CRLF                      = "\r\n"
+	CONTENT_TYPE_PLAIN_TEXT   = "text/plain"
+	CONTENT_TYPE_OCTET_STREAM = "application/octet-stream"
 )
 
 type Header struct {
 	contentType     string
 	contentLength   string
 	contentEncoding string
+	close           bool
 }
 
 func main() {
@@ -61,8 +63,8 @@ func handleConnection(conn net.Conn, dirPath string) {
 		buff := make([]byte, 1024)
 		n, err := conn.Read(buff)
 		if err != nil {
-			log.Println("ERROR: ", err.Error())
-			return
+			// log.Println("ERROR: ", err.Error())
+			continue
 		}
 		message := buff[:n]
 
@@ -72,25 +74,36 @@ func handleConnection(conn net.Conn, dirPath string) {
 		if err != nil {
 			log.Println("ERROR: Could not parse request message:", err.Error())
 		}
+
+		resHeader := Header{}
+		connection_header, ok := req.header["Connection"]
+
+		if ok && connection_header == "close" {
+			resHeader.close = true
+		} else {
+			resHeader.close = false
+
+		}
 		resEncoding, ok := req.header["Accept-Encoding"]
 		accptedEncodings := strings.Split(resEncoding, ", ")
-		encoding := ""
 		if ok && slices.Contains(accptedEncodings, "gzip") {
-			encoding = "gzip"
+			resHeader.contentEncoding = "gzip"
+		} else {
+			resHeader.contentEncoding = ""
 		}
 
 		switch {
 		case req.path == "/user-agent":
 			{
-				res = HandleUserAgentRequest(req, encoding)
+				res = HandleUserAgentRequest(req, resHeader)
 			}
 		case strings.HasPrefix(req.path, "/echo/"):
 			{
-				res = HandleEchoRequest(req, encoding)
+				res = HandleEchoRequest(req, resHeader)
 			}
 		case strings.HasPrefix(req.path, "/files/"):
 			{
-				res = HandleFileRequest(req, dirPath)
+				res = HandleFileRequest(req, dirPath, resHeader)
 			}
 		case req.path == "/":
 			{
@@ -104,7 +117,11 @@ func handleConnection(conn net.Conn, dirPath string) {
 		if err != nil {
 			log.Println("ERROR: Failed to write response: ", err.Error())
 		}
+		if resHeader.close {
+			break
+		}
 	}
+	defer conn.Close()
 
 }
 
@@ -131,6 +148,9 @@ func createResHeader(header Header) string {
 		val += fmt.Sprintf("Content-Encoding: %s%s", header.contentEncoding, CRLF)
 	}
 
+	if header.close {
+		val += fmt.Sprintf("Connection: %s%s", "close", CRLF)
+	}
 	return val
 }
 

@@ -7,46 +7,44 @@ import (
 	"strings"
 )
 
-func HandleEchoRequest(req Request, encoding string) []byte {
+func HandleEchoRequest(req Request, resHeader Header) []byte {
 
 	var res []byte
 	var body []byte
 	bodyStr := strings.TrimPrefix(req.path, "/echo/")
 
-	if encoding != "" {
+	if resHeader.contentEncoding != "" {
 		body = compressBytesTogzip([]byte(bodyStr))
 
 	} else {
 
 		body = []byte(bodyStr)
 	}
-	header := createResHeader(Header{
-		contentType:     CONTENT_TYPE_PLAIN_TEXT,
-		contentLength:   fmt.Sprintf("%d", len(body)),
-		contentEncoding: encoding,
-	})
-	res = makeResponse(STATUS_LINE_OK, header, []byte(body))
+	resHeader.contentLength = fmt.Sprintf("%d", len(body))
+	resHeader.contentType = CONTENT_TYPE_PLAIN_TEXT
+
+	res = makeResponse(STATUS_LINE_OK, createResHeader(resHeader), []byte(body))
+	log.Println("HEADER: ", createResHeader(resHeader))
+
 	return res
 }
 
-func HandleUserAgentRequest(req Request, encoding string) []byte {
+func HandleUserAgentRequest(req Request, resHeader Header) []byte {
 	var res []byte
 	val, ok := req.header["User-Agent"]
 	if ok {
 		//	header := fmt.Sprintf("Content-Type: text/plain%sContent-Length: %d%s", CRLF, len(val), CRLF)
-		header := createResHeader(Header{
-			contentType:     CONTENT_TYPE_PLAIN_TEXT,
-			contentLength:   fmt.Sprintf("%d", len(val)),
-			contentEncoding: encoding,
-		})
-		res = makeResponse(STATUS_LINE_OK, header, []byte(val))
+		resHeader.contentLength = fmt.Sprintf("%d", len(val))
+		resHeader.contentType = CONTENT_TYPE_PLAIN_TEXT
+
+		res = makeResponse(STATUS_LINE_OK, createResHeader(resHeader), []byte(val))
 	} else {
 		res = makeResponse(STATUS_LINE_NOT_FOUND, "", nil)
 	}
-
+	log.Println("HEADER: ", createResHeader(resHeader))
 	return res
 }
-func HandleFileRequest(req Request, dirPath string) []byte {
+func HandleFileRequest(req Request, dirPath string, resHeader Header) []byte {
 	filename := strings.TrimPrefix(req.path, "/files/")
 	reqFilePath := fmt.Sprintf("%s%s", dirPath, filename)
 	//	reqFilePath := fmt.Sprintf("/home/astral/Workspace/codecrafters/codecrafters-http-server-go%s", filename)
@@ -67,8 +65,9 @@ func HandleFileRequest(req Request, dirPath string) []byte {
 				res = makeResponse(STATUS_LINE_NOT_FOUND, "", nil)
 				return res
 			}
-			header := fmt.Sprintf("Content-Type: application/octet-stream%sContent-Length: %d%s", CRLF, info.Size(), CRLF)
-			res = makeResponse(STATUS_LINE_OK, header, data)
+			resHeader.contentLength = fmt.Sprintf("%d", info.Size())
+			resHeader.contentType = CONTENT_TYPE_OCTET_STREAM
+			res = makeResponse(STATUS_LINE_OK, createResHeader(resHeader), data)
 
 		}
 	case "POST":
@@ -85,7 +84,6 @@ func HandleFileRequest(req Request, dirPath string) []byte {
 		res = makeResponse(STATUS_LINE_CREATED, "", nil)
 
 	}
-
 	return res
 
 }
