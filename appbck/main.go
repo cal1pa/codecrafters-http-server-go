@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"compress/gzip"
 	"flag"
 	"fmt"
 	"log"
@@ -54,18 +52,17 @@ func main() {
 
 func handleConnection(conn net.Conn, dirPath string) {
 	defer conn.Close()
-	var res []byte
+	var res string
 	buff := make([]byte, 1024)
 	n, err := conn.Read(buff)
 	if err != nil {
 		log.Println("ERROR: ", err.Error())
 		return
 	}
-	message := buff[:n]
-
-	var body []byte
+	message := string(buff[:n])
 
 	log.Printf("INFO: Read %d bytes\n", n)
+	log.Println("INFO: The message was: ", message)
 
 	req, err := ParseRequestMessage(message)
 
@@ -93,79 +90,60 @@ func handleConnection(conn net.Conn, dirPath string) {
 					contentLength:   fmt.Sprintf("%d", len(val)),
 					contentEncoding: acceptedEncoding,
 				})
-				res = makeResponse(STATUS_LINE_OK, header, []byte(val))
+				res = makeResponse(STATUS_LINE_OK, header, val)
 				break
 			} else {
-				res = makeResponse(STATUS_LINE_NOT_FOUND, "", nil)
+				res = makeResponse(STATUS_LINE_NOT_FOUND, "", "")
 			}
 		}
 	case strings.HasPrefix(req.path, "/echo/"):
 		{
-			bodyStr := strings.TrimPrefix(req.path, "/echo/")
-
-			if acceptedEncoding != "" {
-				body = compressBytesTogzip([]byte(bodyStr))
-
-			} else {
-
-				body = []byte(bodyStr)
-			}
+			body := strings.TrimPrefix(req.path, "/echo/")
 			header := createResHeader(Header{
 				contentType:     CONTENT_TYPE_PLAIN_TEXT,
 				contentLength:   fmt.Sprintf("%d", len(body)),
 				contentEncoding: acceptedEncoding,
 			})
-			res = makeResponse(STATUS_LINE_OK, header, []byte(body))
+			res = makeResponse(STATUS_LINE_OK, header, body)
 		}
 	case strings.HasPrefix(req.path, "/files/"):
 		{
+			fmt.Println()
+			fmt.Println("===============================================")
+			fmt.Println("Attempt to handle file")
 			res = HandleFileRequest(req, dirPath)
 		}
 	case req.path == "/":
 		{
-			res = makeResponse(STATUS_LINE_OK, "", nil)
+			res = makeResponse(STATUS_LINE_OK, "", "")
 		}
 	default:
-		res = makeResponse(STATUS_LINE_NOT_FOUND, "", nil)
+		res = makeResponse(STATUS_LINE_NOT_FOUND, "", "")
 	}
 
 	_, err = conn.Write([]byte(res))
 	if err != nil {
 		log.Println("ERROR: Failed to write response: ", err.Error())
 	}
+	fmt.Println(res)
 }
 
-func makeResponse(statusline, header string, body []byte) []byte {
-	//	return fmt.Sprintf("%s%s%s%s%s\n", statusline, CRLF, header, CRLF, body)
-	str := fmt.Sprintf("%s%s%s%s", statusline, CRLF, header, CRLF)
-	var buff bytes.Buffer
-	buff.WriteString(str)
-	buff.Write(body)
-	return buff.Bytes()
+func makeResponse(statusline, header, body string) string {
+	return fmt.Sprintf("%s%s%s%s%s\n", statusline, CRLF, header, CRLF, body)
 }
 
 func createResHeader(header Header) string {
 	val := ""
 	if header.contentType != "" {
-		val += fmt.Sprintf("Content-Type: %s%s", header.contentType, CRLF)
+		val += fmt.Sprintf("Content-Type:%s%s", header.contentType, CRLF)
 	}
 
 	if header.contentLength != "" {
-		val += fmt.Sprintf("Content-Length: %s%s", header.contentLength, CRLF)
+		val += fmt.Sprintf("Content-Length:%s%s", header.contentLength, CRLF)
 	}
 
 	if header.contentEncoding != "" {
-		val += fmt.Sprintf("Content-Encoding: %s%s", header.contentEncoding, CRLF)
+		val += fmt.Sprintf("Content-Encoding:%s%s", header.contentEncoding, CRLF)
 	}
-
 	return val
-}
-
-func compressBytesTogzip(data []byte) []byte {
-	var buf bytes.Buffer
-	writer := gzip.NewWriter(&buf)
-	writer.Write(data)
-	writer.Close()
-
-	return buf.Bytes()
 }
